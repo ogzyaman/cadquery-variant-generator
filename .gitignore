@@ -1,11 +1,7 @@
-# Claude Code çalışma dosyaları
-CLAUDE.md
-.claude/
-
-# Test çıktıları
+# Test output
 _test_output/
 
-# Üretilen CAD dosyaları (repo'yu şişirmesin)
+# Generated CAD files
 output/step/
 output/stl/
 output/manifest.csv
@@ -15,6 +11,6 @@ output/manifest.xlsx
 __pycache__/
 *.pyc
 
-# macOS
+# Editor and OS
 .DS_Store
 .vscode/
