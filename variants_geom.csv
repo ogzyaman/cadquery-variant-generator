@@ -1,0 +1,4 @@
+variant_id,length_mm,width_mm,height_mm,hole_dia_mm,fillet_r_mm
+G001,60,30,6,6,3
+G002,100,30,6,6,20
+G003,80,40,6,8,3
