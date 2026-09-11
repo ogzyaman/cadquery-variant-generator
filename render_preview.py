@@ -6,11 +6,11 @@ from pathlib import Path
 
 import vtk
 
-X_PADDING_FACTOR = 1.20  # en uzun parçanın length'ine göre yatay boşluk payı
-Y_PADDING_FACTOR = 1.20  # en geniş parçanın width'ine göre dikey boşluk payı
-LABEL_GAP_MM = 6  # parça alt kenarı ile etiket arası boşluk
-LABEL_RESERVE_MM = 22  # etiketin satırlar arasında / en alt satırın altında kapladığı tahmini dikey pay
-LABEL_FONT_SIZE = 32  # piksel — vtkTextActor 2D overlay, dünya birimiyle ölçeklenmiyor
+X_PADDING_FACTOR = 1.20  # relative to the longest part's length
+Y_PADDING_FACTOR = 1.20  # relative to the widest part's width
+LABEL_GAP_MM = 6  # gap between a part's bottom edge and its label
+LABEL_RESERVE_MM = 22  # estimated vertical space a label needs, between/below rows
+LABEL_FONT_SIZE = 32  # pixels -- vtkTextActor is a 2D overlay, doesn't scale with world units
 LABEL_COLOR = (0.25, 0.25, 0.25)
 
 
@@ -36,7 +36,7 @@ def build_actor(stl_path):
     actor.SetMapper(mapper)
 
     prop = actor.GetProperty()
-    prop.SetColor(0.55, 0.65, 0.78)  # metalik mavi-gri
+    prop.SetColor(0.55, 0.65, 0.78)
     prop.SetAmbient(0.2)
     prop.SetDiffuse(0.8)
     prop.SetSpecular(0.25)
@@ -46,11 +46,10 @@ def build_actor(stl_path):
 
 
 def add_world_label(renderer, text, world_x, world_y, font_size=LABEL_FONT_SIZE, color=LABEL_COLOR):
-    """2D overlay metin (vtkTextActor, sistem fontu) — Ø gibi Unicode karakterleri
-    destekliyor (vtkVectorText desteklemiyordu). Pozisyonu World koordinat sistemine
-    bağlıyoruz, VTK her render'da kameraya göre ekran konumunu otomatik hesaplıyor.
-    Not: font boyutu piksel cinsinden sabit, dünya ölçeğiyle (kamera zoom'uyla) büyüyüp
-    küçülmüyor — bu değer mevcut grid yoğunluğu/çözünürlüğü için ayarlandı."""
+    """2D overlay text (vtkTextActor, system font) -- supports Unicode characters
+    like Ø (vtkVectorText did not). Anchored to World coordinates, so VTK
+    recomputes its screen position from the camera on every render. Font size
+    is a fixed pixel value that doesn't scale with world zoom."""
     text_actor = vtk.vtkTextActor()
     text_actor.SetInput(text)
 
@@ -80,9 +79,9 @@ def set_camera_direction(camera, center, direction, view_up, distance):
 
 
 def fit_camera_tight(camera, bounds, aspect, padding=1.08):
-    """Kamerayı bounds'a sıkı çerçeveler: köşeleri kamera düzlemine projekte edip
-    gerçek genişlik/yükseklik oranına göre ParallelScale hesaplar (genel ResetCamera()
-    keyfi açılarda gereğinden fazla boşluk bırakıyor)."""
+    """Frames the camera tightly around bounds: projects the corners onto the
+    camera plane and computes ParallelScale from the actual width/height ratio
+    (the generic ResetCamera() leaves too much padding at arbitrary angles)."""
     position = camera.GetPosition()
     focal = camera.GetFocalPoint()
     view_up = camera.GetViewUp()
@@ -148,7 +147,7 @@ def render_scene(
     camera.SetParallelProjection(True)
 
     bounds = list(renderer.ComputeVisiblePropBounds())
-    bounds[2] -= bottom_margin  # etiketler için alt satırın altına ekstra pay
+    bounds[2] -= bottom_margin  # extra room below the last row, for labels
     bounds = tuple(bounds)
 
     center = (
@@ -158,9 +157,9 @@ def render_scene(
     )
     diagonal = math.dist(bounds[0::2], bounds[1::2])
 
-    # Varsayılan headlight kameraya bağlı: tam üstten bakışta ışık yüzeye dik düşüp
-    # düz/parlak, kontrastsız bir görüntü veriyor. Kameradan bağımsız, sabit açılı
-    # iki ışık (key + fill) kullanıyoruz ki üstten bakışta da gölgeleme kalsın.
+    # The default headlight is attached to the camera: a straight top-down
+    # view then has light hitting the surface head-on, giving a flat, contrast-
+    # less image. Two fixed-angle lights (key + fill) keep shading even then.
     renderer.AutomaticLightCreationOff()
     light_distance = diagonal * 3
 
@@ -202,7 +201,7 @@ def render_scene(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Varyant grid önizleme render'ı (VTK, headless).")
+    parser = argparse.ArgumentParser(description="Grid preview render of all variants (VTK, headless).")
     parser.add_argument("--width", type=int, default=3840)
     parser.add_argument("--height", type=int, default=2160)
     parser.add_argument("--output-dir", default="output")
@@ -214,11 +213,11 @@ def main():
 
     variants = load_ok_variants(manifest_path)
     if not variants:
-        print("Render edilecek 'ok' durumunda varyant bulunamadı.")
+        print("No variants with status 'ok' to render.")
         return
 
     if "stl_file" not in variants[0]:
-        sys.exit("HATA: Preview render için STL gerekli. --formats stl veya step,stl ile yeniden üretin.")
+        sys.exit("ERROR: STL is required for preview rendering. Regenerate with --formats stl or step,stl.")
 
     parts = []
     max_xlen = 0.0
@@ -267,7 +266,7 @@ def main():
         bottom_margin=LABEL_RESERVE_MM,
     )
 
-    print(f"{len(parts)} varyant render edildi -> {output_path} ({args.width}x{args.height}, {cols} sütun)")
+    print(f"{len(parts)} variants rendered -> {output_path} ({args.width}x{args.height}, {cols} columns)")
 
 
 if __name__ == "__main__":

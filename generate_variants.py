@@ -34,13 +34,14 @@ def read_csv_rows(csv_path):
 
 
 def validate(fieldnames, rows):
-    """Katman 1: tüm CSV'yi tarar, hataları toplar. Hata varsa resolved=None döner."""
+    # Input errors abort the whole run before any geometry is built;
+    # only CAD failures (in generate()) are handled per row.
     errors = []
 
     missing_columns = [c for c in REQUIRED_COLUMNS if c not in fieldnames]
     if missing_columns:
         for col in missing_columns:
-            errors.append(f"eksik kolon: {col}")
+            errors.append(f"missing column: {col}")
         return errors, None
 
     resolved = {}
@@ -51,7 +52,7 @@ def validate(fieldnames, rows):
         raw_values = {field: (row.get(field) or "").strip() for field in NUMERIC_FIELDS}
         missing_fields = [field for field, raw in raw_values.items() if not raw]
         if missing_fields:
-            errors.append(f"satır {row_num}: eksik değer ({', '.join(missing_fields)})")
+            errors.append(f"row {row_num}: missing value ({', '.join(missing_fields)})")
             continue
 
         bad_fields = []
@@ -62,7 +63,7 @@ def validate(fieldnames, rows):
             except ValueError:
                 bad_fields.append(f"{field}={raw!r}")
         if bad_fields:
-            errors.append(f"satır {row_num}: sayıya çevrilemedi ({', '.join(bad_fields)})")
+            errors.append(f"row {row_num}: not a number ({', '.join(bad_fields)})")
             continue
 
         variant_id = (row.get("variant_id") or "").strip()
@@ -75,13 +76,13 @@ def validate(fieldnames, rows):
 
     for variant_id, row_nums in id_rows.items():
         if len(row_nums) > 1:
-            errors.append(f"variant_id tekrar ediyor: {variant_id} (satırlar: {', '.join(map(str, row_nums))})")
+            errors.append(f"duplicate variant_id: {variant_id} (rows: {', '.join(map(str, row_nums))})")
 
     return errors, resolved
 
 
 def _to_number(value):
-    """Tam sayıysa int, değilse float döner — Excel'de 60.0 yerine 60 görünsün diye."""
+    """Returns int for whole numbers, float otherwise -- so Excel shows 60, not 60.0."""
     f = float(value)
     return int(f) if f.is_integer() else f
 
@@ -141,7 +142,8 @@ def write_manifest_xlsx(manifest_rows, xlsx_path, manifest_fields):
 
 
 def generate(resolved, out_dir, formats):
-    """Katman 2: girdi geçerliliği onaylanmış satırları üretir. Geometri hatası satırı düşürmez."""
+    # A row's CAD failure is recorded as status="failed: ..." and skipped;
+    # it never aborts the rest of the batch.
     step_dir = out_dir / "step"
     stl_dir = out_dir / "stl"
     preview_dir = out_dir / "preview"
@@ -211,7 +213,7 @@ def main(csv_path="variants.csv", out_dir=None, formats=None):
     errors, resolved = validate(fieldnames, rows)
 
     if errors:
-        print(f"CSV doğrulama hatası — {len(errors)} sorun bulundu, üretime hiç başlanmadı:")
+        print(f"CSV validation failed -- {len(errors)} problem(s) found, nothing was generated:")
         for err in errors:
             print(f"  - {err}")
         sys.exit(1)
@@ -222,24 +224,24 @@ def main(csv_path="variants.csv", out_dir=None, formats=None):
     ok_count = sum(1 for r in manifest_rows if r["status"] == "ok")
     failed_count = len(manifest_rows) - ok_count
 
-    print(f"Tamamlandı: {len(manifest_rows)} varyant işlendi ({ok_count} ok, {failed_count} failed).")
-    print(f"Formatlar: {', '.join(formats)}")
+    print(f"Done: {len(manifest_rows)} variants processed ({ok_count} ok, {failed_count} failed).")
+    print(f"Formats: {', '.join(formats)}")
     print(f"Manifest: {manifest_path}")
-    print(f"Toplam süre: {elapsed:.2f} saniye")
+    print(f"Total time: {elapsed:.2f} seconds")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="CSV'den parametrik plate varyantları üretir.")
+    parser = argparse.ArgumentParser(description="Generates parametric plate variants from a CSV file.")
     parser.add_argument("csv_path", nargs="?", default="variants.csv")
     parser.add_argument("out_dir", nargs="?", default="output")
-    parser.add_argument("--formats", default="step,stl", help="Virgülle ayrılmış: step, stl veya step,stl")
+    parser.add_argument("--formats", default="step,stl", help="Comma-separated: step, stl, or step,stl")
     args = parser.parse_args()
 
     formats_arg = [f.strip().lower() for f in args.formats.split(",") if f.strip()]
     invalid = [f for f in formats_arg if f not in ALLOWED_FORMATS]
     if invalid:
-        sys.exit(f"HATA: geçersiz format: {', '.join(invalid)} (izin verilen: step, stl)")
+        sys.exit(f"ERROR: invalid format(s): {', '.join(invalid)} (allowed: step, stl)")
     if not formats_arg:
-        sys.exit("HATA: en az bir format belirtilmeli (step, stl)")
+        sys.exit("ERROR: at least one format must be given (step, stl)")
 
     main(args.csv_path, args.out_dir, formats_arg)

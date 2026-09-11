@@ -6,7 +6,7 @@ import cadquery as cq
 from ocp_vscode import show
 
 MANIFEST_PATH = Path("output/manifest.csv")
-MARGIN = 20  # varyantlar arası boşluk (mm)
+MARGIN = 20  # spacing between variants (mm)
 
 
 def load_ok_variants():
@@ -22,7 +22,7 @@ def load_ok_variants():
 def main():
     variants = load_ok_variants()
     if not variants:
-        print("Gösterilecek 'ok' durumunda varyant bulunamadı.")
+        print("No variants with status 'ok' to show.")
         return
 
     parts = []
@@ -30,8 +30,9 @@ def main():
     max_size = 0.0
 
     for row in variants:
-        # STEP dosyasını import ediyoruz ki gerçekten export edilen dosyaya bakmış olalım
-        # manifest'teki step_file yolu output/ köküne göre göreli, o yüzden MANIFEST_PATH.parent ile birleştiriyoruz
+        # Import the STEP file itself, to check what was actually exported.
+        # step_file in the manifest is relative to the output dir, hence
+        # MANIFEST_PATH.parent.
         step_path = MANIFEST_PATH.parent / row["step_file"]
         part = cq.importers.importStep(str(step_path))
         bbox = part.val().BoundingBox()
@@ -51,7 +52,7 @@ def main():
         placed_parts.append(part.translate((x, y, 0)))
 
     show(*placed_parts, names=names)
-    print(f"{len(placed_parts)} varyant viewer'da gösterildi: {', '.join(names)}")
+    print(f"{len(placed_parts)} variants shown in viewer: {', '.join(names)}")
 
 
 if __name__ == "__main__":

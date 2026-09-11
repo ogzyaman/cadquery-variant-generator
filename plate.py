@@ -16,15 +16,3 @@ if __name__ == "__main__":
     show(part)
     cq.exporters.export(part, "out/test.step")
     cq.exporters.export(part, "out/test.stl")
-
-
-# --- ESKİ HALİ (parametrik olmayan versiyon) ---
-# part = (cq.Workplane("XY")
-#         .box(60, 30, 6)
-#         .faces(">Z").workplane()
-#         .hole(6)
-#         .edges("|Z").fillet(3))
-#
-# show(part)
-# cq.exporters.export(part, "out/test.step")
-# cq.exporters.export(part, "out/test.stl")
