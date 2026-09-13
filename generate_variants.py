@@ -158,6 +158,21 @@ def generate(resolved, out_dir, formats):
 
     manifest_fields = build_manifest_fields(formats)
     manifest_rows = []
+    manifest_path = out_dir / "manifest.csv"
+
+    def write_manifests():
+        # Called after every variant, not once at the end: an OCCT crash
+        # (see the hole_dia check below) kills the whole process with no
+        # Python exception raised, so a try/finally around the loop would
+        # never run either. Writing here means whatever crashes the
+        # process, manifest.csv/.xlsx on disk already reflect every
+        # variant decided so far, and are never left holding a stale
+        # manifest from a previous run.
+        with open(manifest_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=manifest_fields)
+            writer.writeheader()
+            writer.writerows(manifest_rows)
+        write_manifest_xlsx(manifest_rows, out_dir / "manifest.xlsx", manifest_fields)
 
     for row_num in sorted(resolved):
         data = resolved[row_num]
@@ -165,6 +180,27 @@ def generate(resolved, out_dir, formats):
         values = {k: v for k, v in data.items() if k != "variant_id"}
 
         row_result = {"variant_id": variant_id, **values}
+
+        # hole_dia_mm >= min(length_mm, width_mm) crashes plate() with an
+        # OCCT segfault (exit 139) at exact equality -- not a Python
+        # exception, so the except Exception below can never catch it.
+        # Checked here, per variant, before plate() is ever called, so the
+        # process never reaches the crash; the rest of the batch is
+        # unaffected.
+        min_dim = min(values["length_mm"], values["width_mm"])
+        if values["hole_dia_mm"] >= min_dim:
+            status = (
+                f"failed: hole_dia_mm does not fit the part "
+                f"(hole_dia_mm={values['hole_dia_mm']} >= min(length_mm, width_mm)={min_dim})"
+            )
+            if "step" in formats:
+                row_result["step_file"] = ""
+            if "stl" in formats:
+                row_result["stl_file"] = ""
+            row_result["status"] = status
+            manifest_rows.append(row_result)
+            write_manifests()
+            continue
 
         try:
             part = plate(
@@ -192,14 +228,7 @@ def generate(resolved, out_dir, formats):
 
         row_result["status"] = status
         manifest_rows.append(row_result)
-
-    manifest_path = out_dir / "manifest.csv"
-    with open(manifest_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=manifest_fields)
-        writer.writeheader()
-        writer.writerows(manifest_rows)
-
-    write_manifest_xlsx(manifest_rows, out_dir / "manifest.xlsx", manifest_fields)
+        write_manifests()
 
     return manifest_rows, manifest_path
 

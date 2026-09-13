@@ -83,7 +83,8 @@ the regional list separator.
 
 ## Error handling
 
-Input errors and geometry errors are treated differently.
+Input errors, geometry-fit errors and geometry-build errors are treated
+differently.
 
 Input errors, such as a missing value, a non-numeric field or a duplicate
 `variant_id`, are found by scanning the whole table before any geometry is
@@ -91,13 +92,33 @@ built. If the table contains one, nothing is generated and every problem is
 reported at once. This avoids a half-finished output directory with no
 record of what happened.
 
-Geometry errors can only appear during the build. A fillet radius that
-exceeds the available material, for example, fails inside the kernel. Such
-a row is recorded in the manifest with a `failed` status and the remaining
-rows are still generated.
+Geometry-fit errors are checked per row, before that row's geometry is
+built: `hole_dia_mm >= min(length_mm, width_mm)` (the hole does not fit
+inside the plate) fails cleanly with a `failed: hole_dia_mm does not fit
+the part (...)` status. This case is checked explicitly, ahead of the
+kernel call, because at exact equality it does not raise a Python
+exception -- it crashes the CAD kernel itself (a native OCCT segfault,
+process exit code 139), which no `except Exception` can catch and which
+would otherwise kill the whole run, including every variant after it.
+Checking it up front means the row is skipped like any other failure and
+the rest of the table is unaffected.
 
-Three CSV files are included to exercise both paths: `variants.csv`,
-`variants_broken.csv` and `variants_geom.csv`.
+Other geometry errors can still appear during the build itself. A fillet
+radius that exceeds the available material, for example, fails inside the
+kernel with a catchable exception. Such a row is recorded in the manifest
+with a `failed` status and the remaining rows are still generated.
+
+The manifest (`manifest.csv` and `manifest.xlsx`) is rewritten after every
+row, not only once at the end of the run. If the process is ever killed
+outright partway through a batch (as the uncaught kernel segfault above
+would do without the up-front check), the manifest on disk still reflects
+every row decided up to that point, rather than silently keeping whatever
+manifest happened to exist from an earlier run.
+
+Four CSV files are included to exercise these paths: `variants.csv`,
+`variants_broken.csv` (input errors), `variants_geom.csv` (a kernel
+geometry-build error) and `variants_hole_edge.csv` (the hole-fit check, at
+and around the exact-equality boundary).
 
 ## Preview images
 
@@ -113,8 +134,12 @@ so only successfully generated variants appear. They require STL output.
 
 - The example part is deliberately simple. The generator is the subject
   here, not the geometry.
-- Valid parameter ranges are not checked. A fillet radius larger than half
-  the width will fail in the kernel rather than being rejected up front.
+- Valid parameter ranges are mostly not checked up front. The one
+  exception is `hole_dia_mm` vs. plate size (see Error handling above),
+  which is checked because it crashes the kernel process rather than
+  raising an exception. Other out-of-range values, such as a fillet
+  radius larger than half the width, still fail inside the kernel rather
+  than being rejected up front.
 - Kernel error messages are passed through unchanged, so a failed row may
   read `BRep_API: command not done` rather than something more specific.
 - DXF output is not implemented.
